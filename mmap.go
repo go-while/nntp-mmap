@@ -1,3 +1,21 @@
+/*
+ *	!!!!		WARNING		!		WARNING	!		WARNING	!
+ *
+ * 	!	DO NOT USE THIS MMAP ! USE ANYTHING ELSE !
+ *
+ *	!	THIS MMAP PLUGIN HAS ALL SYNC.MUTEX DISABLED !
+ *
+ * !	WE USE IT AS: 'MAPREGION PER SINGLE WRITER' FASHION !
+ *
+ * !	WE DONT EVEN KNOW IF IT REALLY WORKS ... SAFELY ! TRIAL + ERROR !
+ *
+ * ! WORK IN PROGRESS !
+ *
+ * 	THIS MMAP IS MIX OF SEVERAL MMAP IMPLEMENTATIONS OUT THERE.
+ *
+ * 	CREDITS TO : github.com/edsrzf/mmap-go
+ */
+
 // Copyright 2011 Evan Shaw. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
@@ -20,7 +38,7 @@ import (
 	"io"
 	"log"
 	"os"
-	"sync"
+	//"sync"
 	"golang.org/x/sys/unix"
 	"reflect"
 	"unsafe"
@@ -47,7 +65,7 @@ const (
 
 // mmap implements Map.
 type mmap struct {
-	mux              sync.RWMutex
+	//mux              sync.RWMutex
 	fd               uintptr
 	flags, prot, len int
 	offset           int64
@@ -181,8 +199,8 @@ func mmapMount(len int, inprot, inflags, fd uintptr, off int64) ([]byte, error) 
 
 // Bytes implements Map.Bytes().
 func (m *mmap) Bytes() []byte {
-	m.mux.RLock()
-	defer m.mux.RUnlock()
+	//m.mux.RLock()
+	//defer m.mux.RUnlock()
 	return m.data
 }
 
@@ -193,8 +211,8 @@ func (m *mmap) Len() int {
 
 // Read implements io.Reader.Read().
 func (m *mmap) Read(p []byte) (int, error) {
-	m.mux.RLock()
-	defer m.mux.RUnlock()
+	//m.mux.RLock()
+	//defer m.mux.RUnlock()
 
 	if m.ptr >= m.len {
 		return 0, io.EOF
@@ -215,8 +233,8 @@ func (m *mmap) Read(p []byte) (int, error) {
 // ReadAt implements ReaderAt.ReadAt().
 func (m *mmap) ReadAt(p []byte, off int64) (n int, err error) {
 	log.Printf("mmap.ReadAt p=%d offset=%d", len(p), off)
-	m.mux.RLock()
-	defer m.mux.RUnlock()
+	//m.mux.RLock()
+	//defer m.mux.RUnlock()
 
 	if int(off) >= m.len {
 		return 0, fmt.Errorf("offset is larger than the mmap []byte")
@@ -231,8 +249,8 @@ func (m *mmap) ReadAt(p []byte, off int64) (n int, err error) {
 
 // Write implements io.Writer.Write().
 func (m *mmap) Write(p []byte) (n int, err error) {
-	m.mux.Lock()
-	defer m.mux.Unlock()
+	//m.mux.Lock()
+	//defer m.mux.Unlock()
 
 	if len(p) > m.len-m.ptr {
 		log.Printf("ERROR mmap.Write len(p)=%d > m.len=%d - m.ptr=%d", len(p), m.len, m.ptr)
@@ -254,8 +272,8 @@ func (m *mmap) Seek(offset int64, whence int) (int64, error) {
 		return 0, fmt.Errorf("cannot seek to a negative offset")
 	}
 
-	m.mux.Lock()
-	defer m.mux.Unlock()
+	//m.mux.Lock()
+	//defer m.mux.Unlock()
 
 	switch whence {
 	case 0:
@@ -288,9 +306,9 @@ func (m *mmap) Seek(offset int64, whence int) (int64, error) {
 
 // Pos implements Map.Pos().
 func (m *mmap) Pos() int {
-	m.mux.RLock()
+	//m.mux.RLock()
 	pos := m.ptr
-	m.mux.RUnlock()
+	//m.mux.RUnlock()
 	return pos
 }
 
@@ -302,11 +320,11 @@ func (m *mmap) Pos() int {
 // Unmap should only be called on the slice value that was originally returned from
 // a call to Map. Calling Unmap on a derived slice may cause errors.
 func (m *mmap) Unmap() error {
-	m.mux.Lock()
-	defer m.mux.Unlock()
+	//m.mux.Lock()
 	err := unix.Munmap(m.data)
 	var clear mmap
 	*m = clear
+	//m.mux.Unlock()
 	return err
 }
 
@@ -314,9 +332,10 @@ func (m *mmap) Unmap() error {
 // Lock keeps the mapped region in physical memory, ensuring that it will not be
 // swapped out.
 func (m *mmap) Lock() error {
-	m.mux.Lock()
-	defer m.mux.Unlock()
-	return unix.Mlock(m.data)
+	//m.mux.Lock()
+	mlock := unix.Mlock(m.data)
+	//m.mux.Unlock()
+	return mlock
 }
 
 // Unlock implements Map.Unlock().
@@ -324,27 +343,30 @@ func (m *mmap) Lock() error {
 // be swapped out.
 // If m is already unlocked, aan error will result.
 func (m *mmap) Unlock() error {
-	m.mux.Lock()
-	defer m.mux.Unlock()
-	return unix.Munlock(m.data)
+	//m.mux.Lock()
+	munlock := unix.Munlock(m.data)
+	//m.mux.Unlock()
+	return munlock
 }
 
 // Close implements Map.Close().
 func (m *mmap) Close() error {
-	m.mux.Lock()
-	defer m.mux.Unlock()
+	//log.Printf("mmap.Close()")
+	//m.mux.Lock()
 	err := unix.Close(int(m.fd))
 	var clear mmap
 	*m = clear
+	//m.mux.Unlock()
 	return err
 }
 
 // Flush implements Map.Flush().
 // Flush synchronizes the mapping's contents to the file's contents on disk.
 func (m *mmap) Flush() error {
-	m.mux.Lock()
-	defer m.mux.Unlock()
-	return unix.Msync(m.data, unix.MS_SYNC)
+	//m.mux.Lock()
+	retsync := unix.Msync(m.data, unix.MS_SYNC)
+	//m.mux.Unlock()
+	return retsync
 }
 
 
